@@ -63,14 +63,21 @@ func (c *conn) maybeClose(isKeepAlive bool) {
 		next = stateClose
 	}
 
-	// Use an atomic swap to determine whether we're done (both reading and
-	// writing) with this connection.
+	// Use an atomic swap to make sure we only close the connection once.
 	prev := atomic.SwapUint32(&c.state, next)
 
-	if prev == stateKeepAlive && isKeepAlive {
-		atomic.StoreUint32(&c.state, 0)
+	// Don't do anything unless we're the latter of the two "ends" (reading
+	// and writing) to finish with the connection.
+	if prev == 0 {
+		return
+	}
+
+	// Either reuse or close the connection.
+	if isKeepAlive && prev == stateKeepAlive {
+		c.raw.SetReadDeadline(time.Time{})
+		c.state = 0
 		c.t.putIdle(c)
-	} else if prev != 0 {
+	} else {
 		c.Close()
 	}
 }

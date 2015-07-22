@@ -60,6 +60,13 @@ func (b *body) Read(buf []byte) (int, error) {
 }
 
 func (b *body) SetReadDeadline(t time.Time) error {
+	// Don't bother setting a timeout unless Read actually has a chance to
+	// succeed. This also prevents the user from setting a deadline on a
+	// connection after it has been repurposed for a new request.
+	if b.err != nil {
+		return nil
+	}
+
 	return b.c.raw.SetReadDeadline(t)
 }
 
