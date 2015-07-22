@@ -4,6 +4,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/erkl/xo"
 )
@@ -34,6 +35,16 @@ type conn struct {
 	// Variable used for atomic operations when synchronizing
 	// connection shutdown.
 	state uint32
+
+	// Connection identifiers.
+	tls  bool
+	addr string
+
+	// How long has this connection been idle?
+	idleSince time.Time
+
+	// Linked list pointer.
+	next *conn
 }
 
 const (
@@ -57,9 +68,8 @@ func (c *conn) maybeClose(isKeepAlive bool) {
 	prev := atomic.SwapUint32(&c.state, next)
 
 	if prev == stateKeepAlive && isKeepAlive {
-		// TODO: Recycle the connection.
 		atomic.StoreUint32(&c.state, 0)
-		c.Close()
+		c.t.putIdle(c)
 	} else if prev != 0 {
 		c.Close()
 	}
@@ -73,7 +83,7 @@ func (c *conn) Close() error {
 	return nil
 }
 
-func newConn(raw net.Conn, t *Transport) *conn {
+func newConn(raw net.Conn, t *Transport, tls bool, addr string) *conn {
 	buf := buffers.Get().([]byte)
 
 	return &conn{
@@ -82,5 +92,7 @@ func newConn(raw net.Conn, t *Transport) *conn {
 		raw:    raw,
 		buf:    buf,
 		t:      t,
+		tls:    tls,
+		addr:   addr,
 	}
 }
