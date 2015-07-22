@@ -3,9 +3,28 @@ package wire
 import (
 	"errors"
 	"io"
+	"net"
+	"time"
 )
 
 var ErrReadAfterClose = errors.New("read after close on response body")
+var ErrBodyTimeout = errors.New("response body timed out")
+
+// The Body interface extends io.ReadClosers with the ability to set a deadline
+// for read operations.
+//
+// All non-nil response bodies returned by Transport.RoundTrip implement this
+// interface.
+type Body interface {
+	io.ReadCloser
+
+	// SetReadDeadline sets the deadline for future Read calls. A zero value
+	// for t clears any previous deadline.
+	SetReadDeadline(t time.Time) error
+}
+
+// Compile-time type check.
+var _ Body = new(body)
 
 type body struct {
 	// Actual body io.Reader.
@@ -29,11 +48,18 @@ func (b *body) Read(buf []byte) (int, error) {
 	}
 
 	n, err := b.r.Read(buf)
-	if err != nil && b.err == nil {
+	if err != nil {
+		if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+			err = ErrBodyTimeout
+		}
 		b.err = err
 	}
 
 	return n, err
+}
+
+func (b *body) SetReadDeadline(t time.Time) error {
+	return b.c.raw.SetReadDeadline(t)
 }
 
 func (b *body) Close() error {
