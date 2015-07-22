@@ -28,6 +28,9 @@ type conn struct {
 	// The actual connection.
 	raw net.Conn
 
+	// Owning Transport.
+	t *Transport
+
 	// Variable used for atomic operations when synchronizing
 	// connection shutdown.
 	state uint32
@@ -70,7 +73,7 @@ func (c *conn) Close() error {
 	return nil
 }
 
-func newConn(raw net.Conn) *conn {
+func newConn(raw net.Conn, t *Transport) *conn {
 	buf := buffers.Get().([]byte)
 
 	return &conn{
@@ -78,5 +81,6 @@ func newConn(raw net.Conn) *conn {
 		Writer: xo.NewWriter(raw, buf[bufferSize:]),
 		raw:    raw,
 		buf:    buf,
+		t:      t,
 	}
 }

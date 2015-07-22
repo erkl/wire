@@ -30,8 +30,7 @@ type body struct {
 	// Actual body io.Reader.
 	r io.Reader
 
-	// Associated Transport and conn instances.
-	t *Transport
+	// Underlying conn instance.
 	c *conn
 
 	// Persisted error.

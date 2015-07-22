@@ -87,7 +87,6 @@ func (t *Transport) RoundTrip(req *heat.Request) (*heat.Response, error) {
 
 		resp.Body = &body{
 			r:           r,
-			t:           t,
 			c:           conn,
 			isKeepAlive: respKeepAlive && rsize != heat.Unbounded,
 		}
@@ -119,7 +118,7 @@ func (t *Transport) dial(scheme, addr string) (*conn, error) {
 		return nil, err
 	}
 
-	return newConn(raw), nil
+	return newConn(raw, t), nil
 }
 
 func defaultPort(addr, port string) string {
