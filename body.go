@@ -48,10 +48,12 @@ func (b *body) Read(buf []byte) (int, error) {
 
 	n, err := b.r.Read(buf)
 	if err != nil {
+		// Don't persist timeout errors.
 		if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
 			err = ErrBodyTimeout
+		} else {
+			b.err = err
 		}
-		b.err = err
 	}
 
 	return n, err
