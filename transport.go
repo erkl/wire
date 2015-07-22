@@ -31,21 +31,21 @@ func (t *Transport) RoundTrip(req *heat.Request) (*heat.Response, error) {
 	}
 
 	// Establish a connection.
-	conn, err := t.dial(req.Scheme, req.Remote)
+	c, err := t.dial(req.Scheme, req.Remote)
 	if err != nil {
 		return nil, err
 	}
 
 	// Write the request header.
-	err = heat.WriteRequestHeader(conn, req)
+	err = heat.WriteRequestHeader(c, req)
 	if err != nil {
-		conn.Close()
+		c.Close()
 		return nil, err
 	}
 
-	err = conn.Flush()
+	err = c.Flush()
 	if err != nil {
-		conn.Close()
+		c.Close()
 		return nil, err
 	}
 
@@ -54,25 +54,25 @@ func (t *Transport) RoundTrip(req *heat.Request) (*heat.Response, error) {
 
 	// Transmit the request body.
 	if wsize == 0 {
-		conn.maybeClose(reqKeepAlive)
+		c.maybeClose(reqKeepAlive)
 	} else {
 		go func() {
-			isKeepAlive := heat.WriteBody(conn, req.Body, wsize) == nil &&
-				conn.Flush() == nil && reqKeepAlive
-			conn.maybeClose(isKeepAlive)
+			isKeepAlive := heat.WriteBody(c, req.Body, wsize) == nil &&
+				c.Flush() == nil && reqKeepAlive
+			c.maybeClose(isKeepAlive)
 		}()
 	}
 
 	// Read the response.
-	resp, err := heat.ReadResponseHeader(conn)
+	resp, err := heat.ReadResponseHeader(c)
 	if err != nil {
-		conn.Close()
+		c.Close()
 		return nil, err
 	}
 
 	rsize, err := heat.ResponseBodySize(resp, req.Method)
 	if err != nil {
-		conn.Close()
+		c.Close()
 		return nil, err
 	}
 
@@ -81,13 +81,13 @@ func (t *Transport) RoundTrip(req *heat.Request) (*heat.Response, error) {
 
 	// Attach a reader for the response body (if there is one).
 	if rsize == 0 {
-		conn.maybeClose(respKeepAlive)
+		c.maybeClose(respKeepAlive)
 	} else {
-		r, _ := heat.OpenBody(conn, rsize)
+		r, _ := heat.OpenBody(c, rsize)
 
 		resp.Body = &body{
 			r:           r,
-			c:           conn,
+			c:           c,
 			isKeepAlive: respKeepAlive && rsize != heat.Unbounded,
 		}
 	}
@@ -137,8 +137,8 @@ func hasPort(addr string) bool {
 	var colons int
 	var rbrack bool
 
-	for i, conn := range addr {
-		if conn == ':' {
+	for i, c := range addr {
+		if c == ':' {
 			colons++
 			rbrack = addr[i-1] == ']'
 		}
