@@ -14,11 +14,11 @@ var ErrUnsupportedScheme = errors.New("unsupported scheme in request")
 type Transport struct {
 	// Dial specifies the function used to establish plain TCP connections
 	// with remote hosts.
-	Dial func(addr string) (net.Conn, error)
+	Dial func(addr string, deadline time.Time) (net.Conn, error)
 
 	// DialTLS specifies the function used to establish TLS connections with
 	// remote hosts.
-	DialTLS func(addr string) (net.Conn, error)
+	DialTLS func(addr string, deadline time.Time) (net.Conn, error)
 
 	// KeepAliveTimeout specifies how long keep-alive connections should be
 	// allowed to sit idle before being automatically terminated.
@@ -49,9 +49,17 @@ func (t *Transport) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Resp
 	}
 
 	// Establish a connection.
-	c, err := t.dial(req.Scheme, req.Remote)
+	c, err := t.dial(req.Scheme, req.Remote, deadline)
 	if err != nil {
 		return nil, err
+	}
+
+	// Enforce the deadline.
+	if !deadline.IsZero() {
+		err = c.raw.SetReadDeadline(deadline)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Write the request header.
@@ -94,6 +102,14 @@ func (t *Transport) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Resp
 		return nil, err
 	}
 
+	// Clear the deadline we set earlier.
+	if !deadline.IsZero() {
+		err = c.raw.SetReadDeadline(deadline)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Is the server cool with us potentially reusing this connection?
 	respKeepAlive := !heat.Closing(resp.Major, resp.Minor, resp.Fields)
 
@@ -113,8 +129,8 @@ func (t *Transport) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Resp
 	return resp, nil
 }
 
-func (t *Transport) dial(scheme, addr string) (*conn, error) {
-	var dial func(addr string) (net.Conn, error)
+func (t *Transport) dial(scheme, addr string, deadline time.Time) (*conn, error) {
+	var dial func(addr string, deadline time.Time) (net.Conn, error)
 
 	// Scheme-specific rules.
 	switch scheme {
@@ -137,7 +153,7 @@ func (t *Transport) dial(scheme, addr string) (*conn, error) {
 	}
 
 	// Invoke the real dial function.
-	raw, err := dial(addr)
+	raw, err := dial(addr, deadline)
 	if err != nil {
 		return nil, err
 	}
