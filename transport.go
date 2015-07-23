@@ -37,7 +37,7 @@ type Transport struct {
 	cleaning bool
 }
 
-func (t *Transport) RoundTrip(req *heat.Request) (*heat.Response, error) {
+func (t *Transport) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Response, error) {
 	if req.Body != nil {
 		defer req.Body.Close()
 	}

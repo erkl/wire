@@ -1,6 +1,8 @@
 package wire
 
 import (
+	"time"
+
 	"github.com/erkl/heat"
 )
 
@@ -9,11 +11,11 @@ var _ RoundTripper = new(Transport)
 // Objects implementing the RoundTripper interface are capable of issuing
 // HTTP requests and returning the responses.
 type RoundTripper interface {
-	RoundTrip(req *heat.Request) (*heat.Response, error)
+	RoundTrip(req *heat.Request, deadline time.Time) (*heat.Response, error)
 }
 
 // A Middleware function extends a RoundTripper with additional functionality.
-type Middleware func(req *heat.Request, next RoundTripper) (*heat.Response, error)
+type Middleware func(req *heat.Request, deadline time.Time, next RoundTripper) (*heat.Response, error)
 
 // Wrap extends a RoundTripper with one or more pieces of middleware.
 //
@@ -32,6 +34,6 @@ type wrapped struct {
 	rt RoundTripper
 }
 
-func (w *wrapped) RoundTrip(req *heat.Request) (*heat.Response, error) {
-	return w.fn(req, w.rt)
+func (w *wrapped) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Response, error) {
+	return w.fn(req, deadline, w.rt)
 }
