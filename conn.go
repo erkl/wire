@@ -11,7 +11,7 @@ import (
 
 const bufferSize = 8 * 1024
 
-// Global pool of buffers.
+// Global buffer pool.
 var buffers = &sync.Pool{
 	New: func() interface{} {
 		return make([]byte, 2*bufferSize)

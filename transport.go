@@ -165,7 +165,6 @@ func defaultPort(addr, port string) string {
 	if !hasPort(addr) {
 		addr = net.JoinHostPort(addr, "80")
 	}
-
 	return addr
 }
 
