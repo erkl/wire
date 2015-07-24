@@ -36,6 +36,9 @@ type body struct {
 	// Persisted error.
 	err error
 
+	// Has the user closed the body?
+	closed bool
+
 	// True if the server has indicated that the connection
 	// can be reused.
 	isKeepAlive bool
@@ -75,8 +78,11 @@ func (b *body) Close() error {
 		b.err = ErrReadAfterClose
 	}
 
-	// Signal that we're done with the response body.
-	b.c.maybeClose(b.isKeepAlive && b.err == io.EOF)
+	// Signal that we're done reading from the connection.
+	if !b.closed {
+		b.c.maybeClose(b.isKeepAlive && b.err == io.EOF)
+	}
 
+	b.closed = true
 	return nil
 }
