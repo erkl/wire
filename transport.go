@@ -79,17 +79,19 @@ func (t *Transport) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Resp
 	}
 
 	// Did the user explicitly disable keep-alive for this request?
-	reqKeepAlive := !heat.Closing(req.Major, req.Minor, req.Fields)
+	reuse := !heat.Closing(req.Major, req.Minor, req.Fields)
 
 	// Transmit the request body.
-	if wsize == 0 {
-		c.maybeClose(reqKeepAlive)
+	if wsize != 0 {
+		go func(reuse bool) {
+			err := heat.WriteBody(c, req.Body, wsize)
+			if err == nil {
+				err = c.Flush()
+			}
+			c.maybeClose(err == nil && reuse)
+		}(reuse)
 	} else {
-		go func() {
-			isKeepAlive := heat.WriteBody(c, req.Body, wsize) == nil &&
-				c.Flush() == nil && reqKeepAlive
-			c.maybeClose(isKeepAlive)
-		}()
+		c.maybeClose(reuse)
 	}
 
 	// Read the response.
@@ -114,19 +116,18 @@ func (t *Transport) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Resp
 	}
 
 	// Is the server cool with us potentially reusing this connection?
-	respKeepAlive := !heat.Closing(resp.Major, resp.Minor, resp.Fields)
+	reuse = !heat.Closing(resp.Major, resp.Minor, resp.Fields)
 
 	// Attach a reader for the response body (if there is one).
-	if rsize == 0 {
-		c.maybeClose(respKeepAlive)
-	} else {
+	if rsize != 0 {
 		r, _ := heat.OpenBody(c, rsize)
-
 		resp.Body = &body{
-			r:           r,
-			c:           c,
-			isKeepAlive: respKeepAlive && rsize != heat.Unbounded,
+			r:     r,
+			c:     c,
+			reuse: reuse && rsize != heat.Unbounded,
 		}
+	} else {
+		c.maybeClose(reuse)
 	}
 
 	return resp, nil

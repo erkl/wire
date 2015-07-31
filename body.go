@@ -41,7 +41,7 @@ type body struct {
 
 	// True if the server has indicated that the connection
 	// can be reused.
-	isKeepAlive bool
+	reuse bool
 }
 
 func (b *body) Read(buf []byte) (int, error) {
@@ -80,7 +80,7 @@ func (b *body) Close() error {
 
 	// Signal that we're done reading from the connection.
 	if !b.closed {
-		b.c.maybeClose(b.isKeepAlive && b.err == io.EOF)
+		b.c.maybeClose(b.reuse && b.err == io.EOF)
 	}
 
 	b.closed = true

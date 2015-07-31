@@ -47,20 +47,18 @@ type conn struct {
 	next *conn
 }
 
-const (
-	stateKeepAlive = 1
-	stateClose     = 2
-)
+func (c *conn) maybeClose(reuse bool) {
+	const halfReused = 1
+	const halfClosed = 2
 
-func (c *conn) maybeClose(isKeepAlive bool) {
 	// As far as the caller is concerned, can the connection be kept alive
 	// and reused for another round-trip?
 	var next uint32
 
-	if isKeepAlive {
-		next = stateKeepAlive
+	if reuse {
+		next = halfReused
 	} else {
-		next = stateClose
+		next = halfClosed
 	}
 
 	// Use an atomic swap to make sure we only close the connection once.
@@ -73,7 +71,7 @@ func (c *conn) maybeClose(isKeepAlive bool) {
 	}
 
 	// Either reuse or close the connection.
-	if isKeepAlive && prev == stateKeepAlive {
+	if reuse && prev == halfReused {
 		c.raw.SetReadDeadline(time.Time{})
 		c.state = 0
 		c.t.putIdle(c)
