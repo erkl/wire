@@ -37,6 +37,9 @@ type Transport struct {
 	cleaning bool
 }
 
+// Make sure Transport implements the RoundTripper interface.
+var _ RoundTripper = new(Transport)
+
 func (t *Transport) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Response, error) {
 	if req.Body != nil {
 		defer req.Body.Close()
