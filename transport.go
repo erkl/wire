@@ -4,12 +4,14 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/erkl/heat"
 )
 
 var ErrUnsupportedScheme = errors.New("unsupported scheme in request")
+var ErrNilCancel = errors.New("round-trip cancelled with nil error")
 
 type Transport struct {
 	// Dial specifies the function used to establish plain TCP connections
@@ -41,8 +43,6 @@ type Transport struct {
 var _ RoundTripper = new(Transport)
 
 func (t *Transport) RoundTrip(req *heat.Request, cancel <-chan error) (*heat.Response, error) {
-	// TODO: Monitor the cancel channel.
-
 	if req.Body != nil {
 		defer req.Body.Close()
 	}
@@ -51,6 +51,12 @@ func (t *Transport) RoundTrip(req *heat.Request, cancel <-chan error) (*heat.Res
 	wsize, err := heat.RequestBodySize(req)
 	if err != nil {
 		return nil, err
+	}
+
+	// Only make the round-trip cancellable (by doing the work in a separate
+	// goroutine) if we were actually provided a cancel channel.
+	if cancel != nil {
+		return t.roundTripCancel(req, wsize, cancel)
 	}
 
 	// Establish a connection.
@@ -67,6 +73,74 @@ func (t *Transport) RoundTrip(req *heat.Request, cancel <-chan error) (*heat.Res
 	}
 
 	return resp, err
+}
+
+type baton struct {
+	c *conn
+	r *heat.Response
+	e error
+}
+
+func (t *Transport) roundTripCancel(req *heat.Request, wsize heat.BodySize, cancel <-chan error) (*heat.Response, error) {
+	var ch = make(chan baton, 1)
+	var syn uint32
+	var c *conn
+
+	// Establish a connection.
+	go func() {
+		c, err := t.dial(req.Scheme, req.Remote)
+		if atomic.CompareAndSwapUint32(&syn, 0, 1) {
+			ch <- baton{c: c, e: err}
+		} else if err == nil {
+			t.putIdle(c)
+		}
+	}()
+
+	// Wait for the connection to be established.
+	select {
+	case err := <-cancel:
+		// If the dial has already completed, recycle the connection.
+		if !atomic.CompareAndSwapUint32(&syn, 0, 1) {
+			if b := <-ch; b.c != nil {
+				t.putIdle(b.c)
+			}
+		}
+
+		// We can't return nil errors.
+		if err == nil {
+			return nil, ErrNilCancel
+		} else {
+			return nil, err
+		}
+
+	case b := <-ch:
+		if b.e != nil {
+			return nil, b.e
+		}
+
+		// Write the request and read the response using a separate
+		// goroutine, as to not block this one.
+		go func() {
+			resp, err := roundTrip(b.c, req, wsize)
+			ch <- baton{r: resp, e: err}
+		}()
+	}
+
+	// Wait for the response to come back.
+	select {
+	case err := <-cancel:
+		c.Close()
+
+		// We can't return nil errors.
+		if err == nil {
+			return nil, ErrNilCancel
+		} else {
+			return nil, err
+		}
+
+	case b := <-ch:
+		return b.r, b.e
+	}
 }
 
 func roundTrip(c *conn, req *heat.Request, wsize heat.BodySize) (*heat.Response, error) {
