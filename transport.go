@@ -40,7 +40,9 @@ type Transport struct {
 // Make sure Transport implements the RoundTripper interface.
 var _ RoundTripper = new(Transport)
 
-func (t *Transport) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Response, error) {
+func (t *Transport) RoundTrip(req *heat.Request, cancel <-chan error) (*heat.Response, error) {
+	// TODO: Monitor the cancel channel.
+
 	if req.Body != nil {
 		defer req.Body.Close()
 	}
@@ -57,24 +59,22 @@ func (t *Transport) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Resp
 		return nil, err
 	}
 
-	// Enforce the deadline.
-	if !deadline.IsZero() {
-		err = c.raw.SetReadDeadline(deadline)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Write the request header.
-	err = heat.WriteRequestHeader(c, req)
+	// Issue the request and read the response.
+	resp, err := roundTrip(c, req, wsize)
 	if err != nil {
 		c.Close()
 		return nil, err
 	}
 
-	err = c.Flush()
-	if err != nil {
-		c.Close()
+	return resp, err
+}
+
+func roundTrip(c *conn, req *heat.Request, wsize heat.BodySize) (*heat.Response, error) {
+	// Write the request header.
+	if err := heat.WriteRequestHeader(c, req); err != nil {
+		return nil, err
+	}
+	if err := c.Flush(); err != nil {
 		return nil, err
 	}
 
@@ -97,22 +97,12 @@ func (t *Transport) RoundTrip(req *heat.Request, deadline time.Time) (*heat.Resp
 	// Read the response.
 	resp, err := heat.ReadResponseHeader(c)
 	if err != nil {
-		c.Close()
 		return nil, err
 	}
 
 	rsize, err := heat.ResponseBodySize(resp, req.Method)
 	if err != nil {
-		c.Close()
 		return nil, err
-	}
-
-	// Clear the deadline we set earlier.
-	if !deadline.IsZero() {
-		err = c.raw.SetReadDeadline(deadline)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// Is the server cool with us potentially reusing this connection?
