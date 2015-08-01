@@ -141,6 +141,8 @@ func (t *Transport) roundTripCancel(req *heat.Request, wsize heat.BodySize, canc
 }
 
 func roundTrip(c *conn, req *heat.Request, wsize heat.BodySize) (*heat.Response, error) {
+	// TODO: Add support for Expect: 100-continue.
+
 	// Write the request header.
 	if err := heat.WriteRequestHeader(c, req); err != nil {
 		return nil, err
