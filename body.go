@@ -10,12 +10,12 @@ import (
 var ErrReadAfterClose = errors.New("read after close on response body")
 var ErrBodyTimeout = errors.New("response body timed out")
 
-// The Body interface extends io.ReadClosers with the ability to set a deadline
+// The BodyReader interface extends io.ReadClosers with the ability to set a deadline
 // for read operations.
 //
 // All non-nil response bodies returned by Transport.RoundTrip implement this
 // interface.
-type Body interface {
+type BodyReader interface {
 	io.ReadCloser
 
 	// SetReadDeadline sets the deadline for future Read calls. A zero value
@@ -24,7 +24,7 @@ type Body interface {
 }
 
 // Compile-time type check.
-var _ Body = new(body)
+var _ BodyReader = new(body)
 
 type body struct {
 	// Actual body io.Reader.
